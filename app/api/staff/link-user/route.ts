@@ -9,7 +9,7 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
-  const supabase = supabaseServer();
+ const supabase = await supabaseServer();
   const { data } = await supabase.auth.getUser();
   const user = data.user;
 

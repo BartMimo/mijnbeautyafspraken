@@ -13,7 +13,7 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data: session } = await supabase.auth.getUser();
   const user = session.user;
   if (!user) return NextResponse.json({ error: "Niet ingelogd" }, { status: 401 });

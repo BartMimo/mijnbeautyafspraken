@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 const Body = z.object({ bookingId: z.string().uuid() });
 
 export async function POST(req: Request) {
-  const supabase = supabaseServer();
+  const supabase = await supabaseServer();
   const { data } = await supabase.auth.getUser();
   const user = data.user;
   if (!user) return NextResponse.json({ error: "Niet ingelogd" }, { status: 401 });

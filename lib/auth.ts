@@ -2,7 +2,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export async function requireUser() {
-  const supabase = supabaseServer();
+const supabase = await supabaseServer();
   const { data } = await supabase.auth.getUser();
   const user = data.user;
   if (!user) throw new Error("NOT_AUTHENTICATED");
