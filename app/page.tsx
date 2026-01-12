@@ -84,7 +84,7 @@ export default function Home() {
           </div>
 
           <div className="md:pl-6">
-            <img src="/images/hero.png"
+            <img src="/images/Hero.png"
   alt="Mijnbeautyafspraken illustratie"
   className="w-full h-auto rounded-[3rem]"
 />
