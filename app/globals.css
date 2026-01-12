@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+body {
+  background: linear-gradient(180deg, #ffffff 0%, #E5FBFF 60%, #FFE8F9 120%);
+}
