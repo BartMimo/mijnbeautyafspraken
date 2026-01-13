@@ -1,192 +1,224 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { createBrowserClient } from "@supabase/ssr";
 import { Shell } from "@/components/Shell";
+import { supabaseBrowser } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+
+type SalonCategory = "knippen" | "wimpers" | "nagels" | "massage";
+
+const CATEGORIES: { value: SalonCategory; label: string }[] = [
+  { value: "knippen", label: "Knippen (Kapper)" },
+  { value: "wimpers", label: "Wimpers" },
+  { value: "nagels", label: "Nagels" },
+  { value: "massage", label: "Massage" },
+];
+
+function normalizePostcode(v: string) {
+  return (v ?? "").toUpperCase().replace(/\s+/g, "");
+}
 
 export default function SalonAanmeldenPage() {
-  const supabase = useMemo(() => {
-    return createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }, []);
+  const router = useRouter();
 
-  const [loadingUser, setLoadingUser] = useState(true);
-  const [isAuthed, setIsAuthed] = useState(false);
+  // account
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  const [name, setName] = useState("");
-  const [city, setCity] = useState("");
+  // salon
+  const [salonName, setSalonName] = useState("");
   const [address, setAddress] = useState("");
+  const [postcode, setPostcode] = useState("");
+  const [city, setCity] = useState("");
+  const [phone, setPhone] = useState("");
+  const [category, setCategory] = useState<SalonCategory>("knippen");
   const [description, setDescription] = useState("");
 
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      setIsAuthed(!!data.user);
-      setLoadingUser(false);
-    })();
-  }, [supabase]);
+  function validate() {
+    if (!email.trim()) return "Vul een e-mail in.";
+    if (!password || password.length < 8) return "Wachtwoord moet minimaal 8 tekens zijn.";
+    if (!salonName.trim()) return "Vul een salonnaam in.";
+    if (!address.trim()) return "Vul een adres in.";
+    if (!city.trim()) return "Vul een stad in.";
+    const pc = normalizePostcode(postcode);
+    if (!/^\d{4}[A-Z]{0,2}$/.test(pc) && !/^\d{4}$/.test(pc)) {
+      return "Vul een geldige postcode in (bijv. 5611AB of 5611).";
+    }
+    return null;
+  }
 
   async function submit() {
-    setError(null);
-    setSubmitting(true);
-const { data: userData } = await supabase.auth.getUser();
-if (!userData.user) {
-  setError("Je moet eerst inloggen om je salon te registreren.");
-  setSubmitting(false);
-  return;}
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
+    setMsg(null);
+    const err = validate();
+    if (err) return setMsg(err);
 
-    if (!token) {
-      setError("Je moet eerst inloggen om je salon te registreren.");
-      setSubmitting(false);
-      return;
+    setLoading(true);
+
+    // 1) account aanmaken
+    const { error: signUpErr } = await supabaseBrowser.auth.signUp({ email, password });
+    if (signUpErr) {
+      setLoading(false);
+      return setMsg(signUpErr.message);
     }
 
-    const res = await fetch("/api/salon-aanmelden", {
+    // 2) direct inloggen (zodat session zeker is voor /api/salon/create)
+    const { error: signInErr } = await supabaseBrowser.auth.signInWithPassword({ email, password });
+    if (signInErr) {
+      setLoading(false);
+      return setMsg(
+        "Account is aangemaakt, maar inloggen lukt niet. Probeer in te loggen via Salon inloggen."
+      );
+    }
+
+    // 3) salon aanmaken via server route (admin)
+    const res = await fetch("/api/salon/create", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ name, city, address, description }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        name: salonName,
+        city,
+        address,
+        postcode: normalizePostcode(postcode),
+        phone,
+        category,
+        description,
+      }),
     });
 
     const json = await res.json();
+    setLoading(false);
 
     if (!res.ok) {
-      setError(json?.error ?? "Er ging iets mis. Probeer opnieuw.");
-      setSubmitting(false);
-      return;
+      return setMsg(json.error ?? "Salon aanmaken mislukt.");
     }
 
-    setDone(true);
-    setSubmitting(false);
+    setMsg("Salon aangemeld ✅ Wacht op goedkeuring door admin.");
+    router.push("/dashboard");
+    router.refresh();
   }
 
   return (
     <Shell>
-      <div className="bg-white/60 border border-black/5 shadow-soft rounded-xl2 p-6">
+      <div className="bg-white/80 shadow-soft rounded-xl2 p-6">
         <h1 className="text-2xl font-semibold">Salon registreren</h1>
-        <p className="text-black/60 mt-1">
-          Meld je salon aan. Na controle zetten we je salon op <span className="font-medium">actief</span>.
+        <p className="text-sm text-black/60 mt-1">
+          Maak je account aan en meld direct je salon aan. Na goedkeuring ben je zichtbaar voor klanten.
         </p>
       </div>
 
-      <div className="mt-6 bg-white rounded-xl2 shadow-soft border border-black/5 p-6">
-        {loadingUser ? (
-          <div className="text-black/60">Laden...</div>
-        ) : !isAuthed ? (
-          <div>
-            <div className="text-black/70">
-              Je moet eerst inloggen om je salon te registreren.
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* ACCOUNT */}
+        <div className="bg-white/80 shadow-soft rounded-xl2 p-6 border border-black/5">
+          <h2 className="font-semibold">Account</h2>
+
+          <label className="block mt-4 text-sm">E-mail</label>
+          <input
+            className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="salon@email.nl"
+            autoComplete="email"
+          />
+
+          <label className="block mt-4 text-sm">Wachtwoord</label>
+          <input
+            type="password"
+            className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Minimaal 8 tekens"
+            autoComplete="new-password"
+          />
+        </div>
+
+        {/* SALON */}
+        <div className="bg-white/80 shadow-soft rounded-xl2 p-6 border border-black/5">
+          <h2 className="font-semibold">Salon gegevens</h2>
+
+          <label className="block mt-4 text-sm">Salonnaam</label>
+          <input
+            className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
+            value={salonName}
+            onChange={(e) => setSalonName(e.target.value)}
+            placeholder="Bijv. Beauty Studio Luna"
+          />
+
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm">Postcode</label>
+              <input
+                className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
+                value={postcode}
+                onChange={(e) => setPostcode(e.target.value)}
+                placeholder="5611AB"
+              />
             </div>
-            <div className="mt-4 flex gap-3">
-              <Link
-                href="/auth"
-                className="px-4 py-2 rounded-xl border border-black/10 bg-white hover:opacity-90"
-              >
-                Inloggen / Registreren
-              </Link>
-              <Link
-                href="/"
-                className="px-4 py-2 rounded-xl bg-skywash border border-black/10 hover:opacity-90"
-              >
-                Terug naar Home
-              </Link>
+            <div>
+              <label className="block text-sm">Stad</label>
+              <input
+                className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Eindhoven"
+              />
             </div>
           </div>
-        ) : done ? (
-          <div className="text-black/70">
-            ✅ Bedankt! Je salon is aangemeld en staat nu op <span className="font-medium">pending</span>.
-            <div className="mt-5 flex gap-3">
-              <Link
-                href="/dashboard"
-                className="px-4 py-2 rounded-xl bg-skywash border border-black/10 hover:opacity-90"
-              >
-                Naar Salon Dashboard →
-              </Link>
-              <Link
-                href="/"
-                className="px-4 py-2 rounded-xl border border-black/10 bg-white hover:opacity-90"
-              >
-                Home
-              </Link>
-            </div>
-          </div>
-        ) : (
-          <>
-            {error && (
-              <div className="mb-4 p-3 rounded-xl2 bg-blush/60 border border-black/10 text-sm">
-                {error}
-              </div>
-            )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm">Salonnaam *</label>
-                <input
-                  className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
+          <label className="block mt-4 text-sm">Adres</label>
+          <input
+            className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            placeholder="Straatnaam 12"
+          />
 
-              <div>
-                <label className="text-sm">Plaats *</label>
-                <input
-                  className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                />
-              </div>
+          <label className="block mt-4 text-sm">Telefoon (optioneel)</label>
+          <input
+            className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="06 12345678"
+          />
 
-              <div className="md:col-span-2">
-                <label className="text-sm">Adres</label>
-                <input
-                  className="w-full mt-1 p-3 rounded-xl2 border border-black/10"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
-              </div>
+          <label className="block mt-4 text-sm">Type</label>
+          <select
+            className="w-full mt-1 p-3 rounded-xl2 border border-black/10 bg-white"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as SalonCategory)}
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
 
-              <div className="md:col-span-2">
-                <label className="text-sm">Beschrijving</label>
-                <textarea
-                  className="w-full mt-1 p-3 rounded-xl2 border border-black/10 min-h-[120px]"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
-              </div>
+          <label className="block mt-4 text-sm">Omschrijving (optioneel)</label>
+          <textarea
+            className="w-full mt-1 p-3 rounded-xl2 border border-black/10 min-h-[120px]"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Vertel iets over je salon, specialiteiten, sfeer…"
+          />
 
-              <div className="md:col-span-2 flex gap-3">
-                <button
-                  onClick={submit}
-                  disabled={submitting || !name.trim() || !city.trim()}
-                  className="px-5 py-3 rounded-xl2 bg-skywash border border-black/10 hover:opacity-90 disabled:opacity-50"
-                >
-                  {submitting ? "Versturen..." : "Salon aanmelden"}
-                </button>
+          <button
+            onClick={submit}
+            disabled={loading}
+            className="mt-4 w-full p-3 rounded-xl2 bg-skywash border border-black/10 hover:opacity-90 disabled:opacity-50"
+            type="button"
+          >
+            {loading ? "Bezig..." : "Account aanmaken & salon aanmelden"}
+          </button>
 
-                <Link
-                  href="/"
-                  className="px-5 py-3 rounded-xl2 bg-white border border-black/10 hover:opacity-90"
-                >
-                  Annuleren
-                </Link>
-              </div>
-            </div>
-          </>
-        )}
+          {msg && <div className="mt-4 text-sm text-black/70">{msg}</div>}
+          <p className="mt-3 text-xs text-black/50">
+            Na aanmelding staat je salon op “pending” tot een admin goedkeurt.
+          </p>
+        </div>
       </div>
     </Shell>
   );
 }
-

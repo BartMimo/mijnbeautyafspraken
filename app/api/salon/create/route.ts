@@ -7,7 +7,10 @@ const Body = z.object({
   name: z.string().min(2),
   city: z.string().min(1),
   address: z.string().min(1),
-  postcode: z.string().optional().nullable(), // ✅ nieuw
+  postcode: z.string().min(4).optional(),
+  phone: z.string().optional(),
+  category: z.string().optional(),
+  description: z.string().optional(),
 });
 
 function extractPostcode(address: string) {
@@ -52,14 +55,17 @@ export async function POST(req: Request) {
   // ✅ salon aanmaken (postcode apart opslaan)
   const { data: salon, error: salonErr } = await supabaseAdmin
     .from("salons")
-    .insert({
-      owner_id: user.id,
-      name,
-      city,
-      address,
-      postcode,           // ✅ nieuw
-      status: "pending",
-    })
+  .insert({
+  owner_id: user.id,
+  name: parsed.data.name,
+  city: parsed.data.city,
+  address: parsed.data.address,
+  postcode: parsed.data.postcode ?? null,
+  phone: parsed.data.phone ?? null,
+  category: parsed.data.category ?? null,
+  description: parsed.data.description ?? null,
+  status: "pending",
+})
     .select("*")
     .single();
 
