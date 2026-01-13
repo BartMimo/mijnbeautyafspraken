@@ -83,12 +83,14 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="md:pl-6">
-            <img src="/images/Hero.png"
-  alt="Mijnbeautyafspraken illustratie"
-  className="w-full h-auto rounded-[3rem]"
-/>
-          </div>
+          <div className="md:pl-6 flex justify-center md:justify-end">
+  <img
+    src="/images/Hero.png"
+    alt="Mijnbeautyafspraken illustratie"
+    className="w-full max-w-[520px] h-auto rounded-[3rem] shadow-soft"
+    loading="eager"
+  />
+</div>
         </div>
 
         {/* feature cards */}
