@@ -5,11 +5,13 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 
 type Mode = "signin" | "signup";
+type Role = "customer" | "salon_owner" | "admin" | null;
 
 export default function AuthClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // /auth?type=salon -> andere titel/tekst, zelfde login
   const authType = (searchParams.get("type") ?? "user").toLowerCase();
   const isSalon = authType === "salon";
 
@@ -31,6 +33,45 @@ export default function AuthClient() {
     [isSalon]
   );
 
+  async function fetchRole(): Promise<Role> {
+    try {
+      const res = await fetch("/api/me", { cache: "no-store" });
+      if (!res.ok) return null;
+
+      const me = await res.json();
+
+      // We ondersteunen meerdere mogelijke shapes om je niet vast te pinnen:
+      // { user: { role } } of { profile: { role } } of { role }
+      const role =
+        me?.user?.role ?? me?.profile?.role ?? me?.role ?? null;
+
+      if (role === "admin" || role === "salon_owner" || role === "customer") return role;
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function redirectAfterLogin(role: Role) {
+    // admin gaat altijd naar admin panel
+    if (role === "admin") {
+      router.push("/admin");
+      router.refresh();
+      return;
+    }
+
+    // salon-owner dashboard
+    if (role === "salon_owner") {
+      router.push("/dashboard");
+      router.refresh();
+      return;
+    }
+
+    // default: customer
+    router.push("/account"); // wil je "/"? verander dit naar "/"
+    router.refresh();
+  }
+
   async function signInMagic() {
     setMsg(null);
     setLoading(true);
@@ -50,14 +91,32 @@ export default function AuthClient() {
 
     const { error } = await supabaseBrowser.auth.signInWithPassword({ email, password });
 
-    setLoading(false);
     if (error) {
+      setLoading(false);
       setMsg(error.message);
       return;
     }
 
-    router.push(isSalon ? "/dashboard" : "/");
-    router.refresh();
+    // ✅ Na login: rol ophalen en redirect bepalen
+    const role = await fetchRole();
+
+    setLoading(false);
+
+    // Als iemand via "Salon inloggen" komt maar geen salon_owner/admin is:
+    if (isSalon && role !== "salon_owner" && role !== "admin") {
+      setMsg("Dit account heeft geen salon-toegang. Log in via 'Inloggen' of vraag salontoegang aan.");
+      // eventueel uitloggen om verwarring te voorkomen:
+      // await supabaseBrowser.auth.signOut();
+      return;
+    }
+
+    if (!role) {
+      // fallback: als /api/me stuk is, stuur salon naar dashboard en users naar account
+      redirectAfterLogin(isSalon ? "salon_owner" : "customer");
+      return;
+    }
+
+    redirectAfterLogin(role);
   }
 
   async function signUp() {
@@ -76,8 +135,7 @@ export default function AuthClient() {
     setMode("signin");
   }
 
-  const btnBase =
-    "p-3 rounded-xl2 border border-black/10 hover:opacity-90 disabled:opacity-50";
+  const btnBase = "p-3 rounded-xl2 border border-black/10 hover:opacity-90 disabled:opacity-50";
   const btnSky = `${btnBase} bg-skywash`;
   const btnWhite = `${btnBase} bg-white`;
 
@@ -98,6 +156,7 @@ export default function AuthClient() {
         >
           Inloggen
         </button>
+
         <button
           type="button"
           onClick={() => {
