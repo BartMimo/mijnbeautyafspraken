@@ -1,17 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase/client";
 
 type Role = "customer" | "salon_owner" | "admin" | null;
 
 export function SiteHeader() {
+  const router = useRouter();
   const supabase = supabaseBrowser;
 
   const [checked, setChecked] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
   const [role, setRole] = useState<Role>(null);
+
+  const isSalonOwner = useMemo(() => role === "salon_owner" || role === "admin", [role]);
 
   useEffect(() => {
     let mounted = true;
@@ -55,12 +59,11 @@ export function SiteHeader() {
 
   async function logout() {
     await supabase.auth.signOut();
-    window.location.href = "/";
+    router.replace("/");
+    router.refresh();
   }
 
-  const isSalonOwner = role === "salon_owner" || role === "admin";
-
-  // Button styles (consistent pills)
+  // Buttons (consistent pills)
   const btnBase =
     "inline-flex items-center justify-center px-4 py-2 rounded-xl border border-black/10 text-sm font-medium transition hover:opacity-90";
   const btnWhite = `${btnBase} bg-white`;
@@ -74,14 +77,13 @@ export function SiteHeader() {
         <Link href="/" className="flex items-center shrink-0">
           <img
             src="/images/logo.svg"
-            alt="Mijnbeautyafspraken"
+            alt="Mijn Beauty Afspraken"
             className="h-10 w-auto max-w-[340px] object-contain"
           />
         </Link>
 
-        {/* RIGHT SIDE ACTIONS */}
+        {/* ACTIONS */}
         <div className="flex items-center gap-2 md:gap-3">
-          {/* Home altijd */}
           <Link href="/" className={btnWhite}>
             Home
           </Link>
@@ -89,37 +91,26 @@ export function SiteHeader() {
           {/* Zolang we auth nog checken: toon niets extra’s */}
           {!checked ? null : !isAuthed ? (
             <>
-              <Link href="/salon-aanmelden" className={btnBlush}>
-                Salon registreren
+              <Link href="/auth?type=salon" className={btnBlush}>
+                Salon inloggen
               </Link>
 
               <Link href="/auth" className={btnSky}>
                 Inloggen
               </Link>
-
-              <Link href="/auth" className={btnSky}>
-                Registreren
-              </Link>
             </>
           ) : (
             <>
-              {/* Salon owner knoppen (desktop) */}
+              {/* Salon owner knoppen als pill-buttons */}
               {isSalonOwner && (
-                <div className="hidden md:flex items-center gap-2">
+                <>
                   <Link href="/dashboard" className={btnWhite}>
-                    Salon Dashboard
+                    Dashboard
                   </Link>
                   <Link href="/dashboard/profile" className={btnWhite}>
                     Salon-profiel
                   </Link>
-                </div>
-              )}
-
-              {/* Alleen tonen als je nog géén salon owner bent */}
-              {!isSalonOwner && (
-                <Link href="/salon-aanmelden" className={btnBlush}>
-                  Salon registreren
-                </Link>
+                </>
               )}
 
               <Link href="/account" className={btnSky}>
