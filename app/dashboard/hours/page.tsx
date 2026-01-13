@@ -1,15 +1,25 @@
 "use client";
 
-import { Shell } from "@/components/Shell";
-import { DashboardNav } from "@/components/DashboardNav";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-const days = ["Zon","Maa","Din","Woe","Don","Vri","Zat"];
+const DAYS = ["Zon", "Maa", "Din", "Woe", "Don", "Vri", "Zat"];
+
+type StaffRow = { id: string; name: string };
+type HourRow = {
+  id: string;
+  staff_id: string;
+  weekday: number; // 0..6
+  start_time: string; // "09:00"
+  end_time: string; // "17:00"
+};
 
 export default function HoursPage() {
-  const [staff, setStaff] = useState<any[]>([]);
-  const [hours, setHours] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  const [staff, setStaff] = useState<StaffRow[]>([]);
+  const [hours, setHours] = useState<HourRow[]>([]);
 
   const [form, setForm] = useState({
     staff_id: "",
@@ -18,76 +28,186 @@ export default function HoursPage() {
     end_time: "17:00",
   });
 
+  const staffById = useMemo(() => {
+    const m = new Map<string, string>();
+    staff.forEach((s) => m.set(s.id, s.name));
+    return m;
+  }, [staff]);
+
   async function load() {
-    const res = await fetch("/api/dashboard/hours");
+    setMsg(null);
+    setLoading(true);
+
+    const res = await fetch("/api/dashboard/hours", { cache: "no-store" });
     const json = await res.json();
-    setStaff(json.staff ?? []);
-    setHours(json.hours ?? []);
-    if (!form.staff_id && (json.staff ?? []).length > 0) {
-      setForm(f => ({ ...f, staff_id: json.staff[0].id }));
-    }
+
+    const staffRows: StaffRow[] = json.staff ?? [];
+    const hourRows: HourRow[] = json.hours ?? [];
+
+    setStaff(staffRows);
+    setHours(hourRows);
+
+    // zet default staff in form (1e medewerker)
+    setForm((f) => {
+      if (f.staff_id) return f;
+      if (staffRows.length === 0) return f;
+      return { ...f, staff_id: staffRows[0].id };
+    });
+
+    setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function save() {
     setMsg(null);
+
+    if (!form.staff_id) {
+      setMsg("Kies eerst een medewerker.");
+      return;
+    }
+    if (!form.start_time || !form.end_time) {
+      setMsg("Vul start- en eindtijd in.");
+      return;
+    }
+
+    setSaving(true);
+
     const res = await fetch("/api/dashboard/hours", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(form),
     });
+
     const json = await res.json();
-    setMsg(res.ok ? "Openingstijd opgeslagen." : (json.error ?? "Mislukt"));
+    setSaving(false);
+
+    if (!res.ok) {
+      setMsg(json.error ?? "Opslaan mislukt");
+      return;
+    }
+
+    setMsg("Openingstijd opgeslagen ✅");
     await load();
   }
 
   return (
-    <Shell>
-      <div className="bg-white/80 shadow-soft rounded-xl2 p-6">
+    <>
+      {/* HEADER CARD (zonder DashboardNav — die hoort in layout) */}
+      <div className="bg-white/80 shadow-soft rounded-xl2 p-6 border border-black/5">
         <h1 className="text-2xl font-semibold">Openingstijden</h1>
         <p className="text-sm text-black/60 mt-1">Per medewerker per dag.</p>
-        <div className="mt-4"><DashboardNav /></div>
       </div>
 
-      <div className="mt-6 bg-white/80 shadow-soft rounded-xl2 p-6">
+      {/* FORM */}
+      <div className="mt-6 bg-white/80 shadow-soft rounded-xl2 p-6 border border-black/5">
         <h2 className="font-semibold">Instellen</h2>
-        <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
-          <select className="p-3 rounded-xl2 border border-black/10"
-            value={form.staff_id} onChange={(e)=>setForm({ ...form, staff_id: e.target.value })}>
-            {staff.map(st => <option key={st.id} value={st.id}>{st.name}</option>)}
-          </select>
 
-          <select className="p-3 rounded-xl2 border border-black/10"
-            value={form.weekday} onChange={(e)=>setForm({ ...form, weekday: Number(e.target.value) })}>
-            {days.map((d, idx) => <option key={idx} value={idx}>{d}</option>)}
-          </select>
+        {loading ? (
+          <div className="mt-3 text-sm text-black/60">Laden…</div>
+        ) : staff.length === 0 ? (
+          <div className="mt-3 text-sm text-black/60">
+            Je hebt nog geen medewerkers. Voeg eerst een medewerker toe.
+          </div>
+        ) : (
+          <>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+              <div className="flex flex-col">
+                <label className="text-sm mb-1">Medewerker</label>
+                <select
+                  className="p-3 rounded-xl2 border border-black/10 bg-white"
+                  value={form.staff_id}
+                  onChange={(e) => setForm({ ...form, staff_id: e.target.value })}
+                >
+                  {staff.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <input className="p-3 rounded-xl2 border border-black/10" type="time"
-            value={form.start_time} onChange={(e)=>setForm({ ...form, start_time: e.target.value })}/>
-          <input className="p-3 rounded-xl2 border border-black/10" type="time"
-            value={form.end_time} onChange={(e)=>setForm({ ...form, end_time: e.target.value })}/>
-        </div>
+              <div className="flex flex-col">
+                <label className="text-sm mb-1">Dag</label>
+                <select
+                  className="p-3 rounded-xl2 border border-black/10 bg-white"
+                  value={form.weekday}
+                  onChange={(e) => setForm({ ...form, weekday: Number(e.target.value) })}
+                >
+                  {DAYS.map((d, idx) => (
+                    <option key={idx} value={idx}>
+                      {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-        <button onClick={save} className="mt-3 px-4 py-3 rounded-xl2 bg-blush hover:opacity-90">
-          Opslaan
-        </button>
-        {msg && <div className="mt-3 text-sm">{msg}</div>}
-      </div>
+              <div className="flex flex-col">
+                <label className="text-sm mb-1">Start</label>
+                <input
+                  className="p-3 rounded-xl2 border border-black/10 bg-white"
+                  type="time"
+                  value={form.start_time}
+                  onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                />
+              </div>
 
-      <div className="mt-4 bg-white/80 shadow-soft rounded-xl2 p-6">
-        <h2 className="font-semibold">Overzicht</h2>
-        <div className="mt-3 flex flex-col gap-2">
-          {hours.map(h => (
-            <div key={h.id} className="p-3 rounded-xl2 border border-black/10 bg-white flex justify-between">
-              <div className="text-sm">
-                {days[h.weekday]} — {h.start_time}–{h.end_time} ({String(h.staff_id).slice(0,6)}…)
+              <div className="flex flex-col">
+                <label className="text-sm mb-1">Eind</label>
+                <input
+                  className="p-3 rounded-xl2 border border-black/10 bg-white"
+                  type="time"
+                  value={form.end_time}
+                  onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+                />
               </div>
             </div>
-          ))}
-          {hours.length === 0 && <div className="text-sm text-black/60">Nog geen openingstijden.</div>}
-        </div>
+
+            <button
+              onClick={save}
+              disabled={saving}
+              className="mt-4 px-4 py-3 rounded-xl2 bg-blush hover:opacity-90 disabled:opacity-50"
+              type="button"
+            >
+              {saving ? "Opslaan..." : "Opslaan"}
+            </button>
+          </>
+        )}
+
+        {msg && <div className="mt-3 text-sm text-black/70">{msg}</div>}
       </div>
-    </Shell>
+
+      {/* OVERVIEW */}
+      <div className="mt-4 bg-white/80 shadow-soft rounded-xl2 p-6 border border-black/5">
+        <h2 className="font-semibold">Overzicht</h2>
+
+        {loading ? (
+          <div className="mt-3 text-sm text-black/60">Laden…</div>
+        ) : hours.length === 0 ? (
+          <div className="mt-3 text-sm text-black/60">Nog geen openingstijden.</div>
+        ) : (
+          <div className="mt-3 flex flex-col gap-2">
+            {hours.map((h) => (
+              <div
+                key={h.id}
+                className="p-3 rounded-xl2 border border-black/10 bg-white flex items-center justify-between gap-3"
+              >
+                <div className="text-sm min-w-0">
+                  <div className="font-medium truncate">
+                    {staffById.get(h.staff_id) ?? "Onbekende medewerker"}
+                  </div>
+                  <div className="text-xs text-black/60">
+                    {DAYS[h.weekday]} • {h.start_time} – {h.end_time}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
